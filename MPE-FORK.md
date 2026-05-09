@@ -34,7 +34,7 @@ The submodule `origin` remote points at `rullopat/sfizz`. The original `sftools/
 
 ## Commit set
 
-Six engine commits, each independently buildable. Listed oldest → newest:
+Seven engine commits, each independently buildable. Listed oldest → newest:
 
 1. **MidiState: introduce per-channel `ChannelState` struct** (`36a6e09`)
    Refactors the global pitch/CC/aftertouch event vectors into a private nested `ChannelState` struct, owned by `MidiState` as a 16-element array indexed by MIDI channel (0..15). All public API still resolves to `channelStates[masterChannel]` (master = 0); behavior byte-for-byte identical. Pure structural refactor.
@@ -54,7 +54,15 @@ Six engine commits, each independently buildable. Listed oldest → newest:
 6. **Sfizz: expose channel-aware MPE methods on the public C++ wrapper** (`cd7d7df`)
    Forwards the `*MPE` input methods and the `setMPEEnabled` / `setMPEPitchBendRange` configuration through `sfz::Sfizz` (the public C++ wrapper) to the underlying `Synth` implementation. Hosts that already use `Sfizz` directly can now drive MPE input without reaching into engine internals. C API in `sfizz.h` is intentionally not extended in this commit.
 
-Total diff: ~620 insertions across `MidiState`, `Voice`, `Synth`, `VoiceStealing`, the public wrapper, and a new test file.
+7. **M8 follow-up: live-test fixes from Osmose hand-test** (`cb3ba1d` on `mpe`, `a8168ce` on shipping)
+   Five fixes uncovered during a hand-test against an Osmose in Logic Pro that the regression suite missed because every test wrote events at delay 0 on the master channel:
+   (a) `MidiState::insertEventInVector` seeds the `{0, 0.0f}` sentinel into any empty member-channel vector before inserting the first real event. `linearEnvelope` downstream `ASSERT`s the vector starts at delay 0; without this, a first write at delay > 0 produced `[{delay, value}]` and SIGTRAP'd the audio thread on the very first MPE pitch-bend event.
+   (b) `MidiState::getCCEvents / getPitchEvents / getChannelAftertouchEvents / getPolyAftertouchEvents` now fall back to master when a member channel's vector is empty, implementing MPE 1.0 inheritance — without this, sfizz's engine defaults (CC7 Volume @ ~0.79, CC10 Pan @ 0.5, CC11 Expression @ 1.0) collapsed to 0 on member channels and voices played near-silent.
+   (c) `modulations/sources/Controller.cpp::generate` now resolves the voice's trigger channel for the `channelAftertouch` case and the default CC case (`cutoff_oncc74` and any other mod-matrix CC binding flowed through here and was collapsing globally despite the M2 plumbing).
+   (d) Parallel fix in `ChannelAftertouchSource` and `PolyAftertouchSource` — the latter required promoting the discarded `VoiceManager&` ctor arg to a member.
+   (e) Two new MPET regression tests covering a first member-channel event at delay > 0 (catches the SIGTRAP) and empty member channels inheriting master CC / pitch / aftertouch state (catches the near-silent voice regression).
+
+Total diff: ~720 insertions across `MidiState`, `Voice`, `Synth`, `VoiceStealing`, three modulation sources, the public wrapper, and the test file.
 
 ---
 
@@ -67,7 +75,7 @@ $ ./library/bin/sfizz_tests
 All tests passed (52269 assertions in 492 test cases)
 ```
 
-The 15 new MPE-specific cases (`[MPE] *`) cover:
+The 17 new MPE-specific cases (`[MPE] *`) cover:
 
 - per-channel pitch bend / CC / channel aftertouch / poly aftertouch state isolation
 - out-of-range channel safety (writes are no-ops, reads return 0 / nullEvent)
@@ -76,6 +84,8 @@ The 15 new MPE-specific cases (`[MPE] *`) cover:
 - `noteOnMPE` tagging spawned voices with the originating channel
 - `setMPEEnabled` / `getMPEEnabled` and `setMPEPitchBendRange` round-trips
 - voice stealing preferring same-channel candidates when MPE is enabled
+- a first member-channel event at delay > 0 keeps the delay-0 sentinel (regression for the M8 hand-test SIGTRAP)
+- empty member channels inherit master CC / pitch / aftertouch state (regression for the near-silent-voice issue)
 
 ---
 
@@ -102,7 +112,7 @@ git -C external/sfizz fetch upstream
 git -C external/sfizz checkout -b mpe upstream/develop
 # Cherry-pick the engine commits in order. Each is independently
 # buildable, so you can pause and run sfizz tests after each pick.
-git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1
+git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1 a8168ce8
 git -C external/sfizz push origin mpe
 ```
 
