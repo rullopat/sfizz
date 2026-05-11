@@ -34,7 +34,7 @@ The submodule `origin` remote points at `rullopat/sfizz`. The original `sftools/
 
 ## Commit set
 
-Seven engine commits, each independently buildable. Listed oldest → newest:
+Eight engine commits, each independently buildable. Listed oldest → newest:
 
 1. **MidiState: introduce per-channel `ChannelState` struct** (`36a6e09`)
    Refactors the global pitch/CC/aftertouch event vectors into a private nested `ChannelState` struct, owned by `MidiState` as a 16-element array indexed by MIDI channel (0..15). All public API still resolves to `channelStates[masterChannel]` (master = 0); behavior byte-for-byte identical. Pure structural refactor.
@@ -52,7 +52,7 @@ Seven engine commits, each independently buildable. Listed oldest → newest:
    Member-channel event vectors are populated lazily; channel-aware getters return the static `nullEvent` sentinel for channels that have never been written. `flushEvents` now iterates all 16 channels (cheap empty-skip). Adds `tests/MPET.cpp` with 15 regression test cases / 68 assertions covering per-channel state isolation, channel-aware Synth API routing, voice stealing under MPE, and configuration round-trips.
 
 6. **Sfizz: expose channel-aware MPE methods on the public C++ wrapper** (`cd7d7df`)
-   Forwards the `*MPE` input methods and the `setMPEEnabled` / `setMPEPitchBendRange` configuration through `sfz::Sfizz` (the public C++ wrapper) to the underlying `Synth` implementation. Hosts that already use `Sfizz` directly can now drive MPE input without reaching into engine internals. C API in `sfizz.h` is intentionally not extended in this commit.
+   Forwards the `*MPE` input methods and the `setMPEEnabled` / `setMPEPitchBendRange` configuration through `sfz::Sfizz` (the public C++ wrapper) to the underlying `Synth` implementation. Hosts that already use `Sfizz` directly can now drive MPE input without reaching into engine internals. The parallel C API extension lands in commit 8.
 
 7. **M8 follow-up: live-test fixes from Osmose hand-test** (`cb3ba1d` on `mpe`, `a8168ce` on shipping)
    Five fixes uncovered during a hand-test against an Osmose in Logic Pro that the regression suite missed because every test wrote events at delay 0 on the master channel:
@@ -62,7 +62,10 @@ Seven engine commits, each independently buildable. Listed oldest → newest:
    (d) Parallel fix in `ChannelAftertouchSource` and `PolyAftertouchSource` — the latter required promoting the discarded `VoiceManager&` ctor arg to a member.
    (e) Two new MPET regression tests covering a first member-channel event at delay > 0 (catches the SIGTRAP) and empty member channels inheriting master CC / pitch / aftertouch state (catches the near-silent voice regression).
 
-Total diff: ~720 insertions across `MidiState`, `Voice`, `Synth`, `VoiceStealing`, three modulation sources, the public wrapper, and the test file.
+8. **Sfizz: expose channel-aware MPE methods on the public C API** (`<sha>`)
+   Forwards the `*MPE` input methods and the `setMPEEnabled` / `setMPEPitchBendRange` configuration through the C wrapper in `sfizz.h` to the underlying `Synth` implementation. Hosts that consume the C API (LV2 in particular) can now drive MPE input without reaching into engine internals or the C++ wrapper. Mirrors the M6 commit shape on the C side. No new engine behavior; existing single-channel C API methods continue to forward to the `*MPE` variants with channel = 0 (master).
+
+Total diff: ~1025 insertions across `MidiState`, `Voice`, `Synth`, `VoiceStealing`, three modulation sources, the public C++ and C wrappers, and the test file.
 
 ---
 
@@ -112,7 +115,7 @@ git -C external/sfizz fetch upstream
 git -C external/sfizz checkout -b mpe upstream/develop
 # Cherry-pick the engine commits in order. Each is independently
 # buildable, so you can pause and run sfizz tests after each pick.
-git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1 a8168ce8
+git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1 a8168ce8 <sha>
 git -C external/sfizz push origin mpe
 ```
 
