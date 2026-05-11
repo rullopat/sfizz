@@ -62,7 +62,7 @@ Eight engine commits, each independently buildable. Listed oldest → newest:
    (d) Parallel fix in `ChannelAftertouchSource` and `PolyAftertouchSource` — the latter required promoting the discarded `VoiceManager&` ctor arg to a member.
    (e) Two new MPET regression tests covering a first member-channel event at delay > 0 (catches the SIGTRAP) and empty member channels inheriting master CC / pitch / aftertouch state (catches the near-silent voice regression).
 
-8. **Sfizz: expose channel-aware MPE methods on the public C API** (`<sha>`)
+8. **Sfizz: expose channel-aware MPE methods on the public C API** (`2977b35` on `mpe`, `c38755a` on shipping)
    Forwards the `*MPE` input methods and the `setMPEEnabled` / `setMPEPitchBendRange` configuration through the C wrapper in `sfizz.h` to the underlying `Synth` implementation. Hosts that consume the C API (LV2 in particular) can now drive MPE input without reaching into engine internals or the C++ wrapper. Mirrors the M6 commit shape on the C side. No new engine behavior; existing single-channel C API methods continue to forward to the `*MPE` variants with channel = 0 (master).
 
 Total diff: ~1025 insertions across `MidiState`, `Voice`, `Synth`, `VoiceStealing`, three modulation sources, the public C++ and C wrappers, and the test file.
@@ -115,7 +115,7 @@ git -C external/sfizz fetch upstream
 git -C external/sfizz checkout -b mpe upstream/develop
 # Cherry-pick the engine commits in order. Each is independently
 # buildable, so you can pause and run sfizz tests after each pick.
-git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1 a8168ce8 <sha>
+git -C external/sfizz cherry-pick 36a6e09a a8b28743 3db6b80a e4812d8b 5ad530a9 cd7d7df1 a8168ce8 c38755ae
 git -C external/sfizz push origin mpe
 ```
 
